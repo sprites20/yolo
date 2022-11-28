@@ -26,6 +26,7 @@ import os
 import shutil
 
 import time
+import glob
 
 
 class ScaledPixmapLabel(QtWidgets.QLabel):
@@ -75,11 +76,13 @@ class Ui_MainWindow(object):
     cam = cv2.VideoCapture(cam_port)
     
     curr_framecount = 0
-    curr_fps = 0
+    curr_fps = 30
     curr_maxframe = 0
     
     recording = None
     saving = None
+    
+    selected = None
     
     def init_slots(self):
         self.button_load_model.clicked.connect(self.load_model)
@@ -87,19 +90,22 @@ class Ui_MainWindow(object):
         self.button_load_image.clicked.connect(self.open_img)
         self.button_load_video.clicked.connect(self.open_vid)
         self.button_load_camera.clicked.connect(self.open_cam)
-        self.button_detect.clicked.connect(self.detect)
-        self.button_stop.clicked.connect(self.stop)
+        self.button_record.clicked.connect(self.record)
+        self.button_save.clicked.connect(self.save)
         # self.ui.pushButton_9.clicked.connect(self.save_ss)
         # self.timer_video.timeout.connect(self.show_video_cam_frame)
 
         self.button_load_image.setDisabled(True)
         self.button_load_video.setDisabled(True)
         self.button_load_camera.setDisabled(True)
-        self.button_detect.setDisabled(True)
-        self.button_stop.setDisabled(True)
+        #self.button_record.setDisabled(True)
+        #self.button_save.setDisabled(True)
         
         pass
     def open_img(self):
+        self.selected = "img"
+        self.button_record.setDisabled(True)
+        self.button_save.setDisabled(True)
         # try except
         self.cam_running = False
         self.vid_running = False
@@ -141,7 +147,10 @@ class Ui_MainWindow(object):
                 self.image_box_2.setPixmap(QtGui.QPixmap(pix))
         pass
     def open_vid(self):
+        self.selected = "video"
         self.cam_running = False
+        self.button_record.setDisabled(False)
+        self.button_save.setDisabled(False)
         try:
             # self.img_name 选择图片路径
             self.vid_name, _ = QtWidgets.QFileDialog.getOpenFileName(None, "打开视频", "data/videos", "*.mp4;*.mkv;All Files(*)")
@@ -184,8 +193,11 @@ class Ui_MainWindow(object):
                 #self.image_box_1.setPixmap(vid)
                 
     def open_cam(self):
+        self.selected = "cam"
         self.cam_running = True
         self.vid_running = False
+        self.button_record.setDisabled(False)
+        self.button_save.setDisabled(False)
         dir = 'detections/cache'
         if os.path.exists(dir):
             shutil.rmtree(dir)
@@ -225,8 +237,9 @@ class Ui_MainWindow(object):
                 pix = QtGui.QPixmap(image)
                 #ConvertToQtFormat = QImage(FlippedImage.data, FlippedImage.shape[1], FlippedImage.shape[0], QImage.Format_RGB888)
                 #Pic = ConvertToQtFormat.scaled(640, 640, Qt.KeepAspectRatio)
-                FlippedImage = cv2.cvtColor(FlippedImage, cv2.COLOR_BGR2RGB)
-                cv2.imwrite("detections/cache/" + str(time.time()) + ".jpg", FlippedImage)
+                if self.recording:
+                    FlippedImage = cv2.cvtColor(FlippedImage, cv2.COLOR_BGR2RGB)
+                    cv2.imwrite("detections/cache/" + str(time.time()) + ".jpg", FlippedImage)
                 self.image_box_2.setPixmap(QtGui.QPixmap(pix))
             self.curr_framecount += 1
             if self.curr_framecount == self.curr_maxframe:
@@ -265,16 +278,76 @@ class Ui_MainWindow(object):
                 #ConvertToQtFormat = QImage(FlippedImage.data, FlippedImage.shape[1], FlippedImage.shape[0], QImage.Format_RGB888)
                 #Pic = ConvertToQtFormat.scaled(640, 640, Qt.KeepAspectRatio)
                 #cv2.imshow("test", FlippedImage)
-                FlippedImage = cv2.cvtColor(FlippedImage, cv2.COLOR_BGR2RGB)
-                cv2.imwrite("detections/cache/" + str(time.time()) + ".jpg", FlippedImage)
+                if self.recording:
+                    FlippedImage = cv2.cvtColor(FlippedImage, cv2.COLOR_BGR2RGB)
+                    cv2.imwrite("detections/cache/" + str(time.time()) + ".jpg", FlippedImage)
                 self.image_box_2.setPixmap(QtGui.QPixmap(pix))
                 
-    def detect(self):
-        pass
+    def record(self):
+        _translate = QtCore.QCoreApplication.translate
+        self.recording = not self.recording
+        if self.recording:
+            self.button_record.setText(_translate("MainWindow", "Recording..."))
+        else:
+            self.button_record.setText(_translate("MainWindow", "Record"))
         
-    def stop(self):
-        
-        pass
+    def save(self):
+        if self.selected == 'video':
+            dir = 'detections/videos'
+            if not os.path.exists(dir):
+                #shutil.rmtree(dir)
+                os.makedirs(dir)
+            
+            try:
+                dimensions = None
+                for filename in glob.glob('detections/cache/*.jpg'):
+                    img = cv2.imread(filename)
+                    dimensions = img.shape
+                    break
+                print("Saving...")
+                frameSize = (dimensions[1], dimensions[0])
+                
+                #fourcc = cv2.VideoWriter_fourcc(*'MJPG')
+                out = cv2.VideoWriter('detections/videos/' + str(time.time()) + ".mp4",cv2.VideoWriter_fourcc(*'mpv4'), int(self.curr_fps), frameSize)
+
+                for filename in glob.glob('detections/cache/*.jpg'):
+                    print(filename)
+                    
+                    img = cv2.imread(filename)
+                    #cv2.imshow('test', img)
+                    out.write(img)
+                print("Saved!")
+                out.release()
+            except Exception as e:
+                print(e)
+        if self.selected == 'cam':
+            dir = 'detections/cams'
+            if not os.path.exists(dir):
+                #shutil.rmtree(dir)
+                os.makedirs(dir)
+            
+            try:
+                dimensions = None
+                for filename in glob.glob('detections/cache/*.jpg'):
+                    img = cv2.imread(filename)
+                    dimensions = img.shape
+                    break
+                print("Saving...")
+                frameSize = (dimensions[1], dimensions[0])
+                
+                #fourcc = cv2.VideoWriter_fourcc(*'MJPG')
+                out = cv2.VideoWriter('detections/cams/' + str(time.time()) + ".mp4",cv2.VideoWriter_fourcc(*'mpv4'), int(self.curr_fps), frameSize)
+
+                for filename in glob.glob('detections/cache/*.jpg'):
+                    print(filename)
+                    
+                    img = cv2.imread(filename)
+                    #cv2.imshow('test', img)
+                    out.write(img)
+                print("Saved!")
+                out.release()
+            except Exception as e:
+                print(e)
         
     def load_model(self):
         try:
@@ -329,9 +402,9 @@ class Ui_MainWindow(object):
         self.button_load_camera = QtWidgets.QPushButton(self.centralwidget)
         self.button_load_camera.setGeometry(QtCore.QRect(10, 170, 131, 31))
         self.button_load_camera.setObjectName("button_load_camera")
-        self.button_detect = QtWidgets.QPushButton(self.centralwidget)
-        self.button_detect.setGeometry(QtCore.QRect(10, 210, 131, 31))
-        self.button_detect.setObjectName("button_detect")
+        self.button_record = QtWidgets.QPushButton(self.centralwidget)
+        self.button_record.setGeometry(QtCore.QRect(10, 210, 131, 31))
+        self.button_record.setObjectName("button_record")
         self.output_box = QtWidgets.QTextEdit(self.centralwidget)
         self.output_box.setGeometry(QtCore.QRect(10, 290, 131, 121))
         self.output_box.setObjectName("output_box")
@@ -355,9 +428,9 @@ class Ui_MainWindow(object):
         self.image_label_2.setGeometry(QtCore.QRect(650, 20, 131, 21))
         self.image_label_2.setAlignment(QtCore.Qt.AlignCenter)
         self.image_label_2.setObjectName("image_label_2")
-        self.button_stop = QtWidgets.QPushButton(self.centralwidget)
-        self.button_stop.setGeometry(QtCore.QRect(10, 250, 131, 31))
-        self.button_stop.setObjectName("button_stop")
+        self.button_save = QtWidgets.QPushButton(self.centralwidget)
+        self.button_save.setGeometry(QtCore.QRect(10, 250, 131, 31))
+        self.button_save.setObjectName("button_save")
         MainWindow.setCentralWidget(self.centralwidget)
         
         self.initialize()
@@ -372,10 +445,10 @@ class Ui_MainWindow(object):
         self.button_load_image.setText(_translate("MainWindow", "Load Image"))
         self.button_load_video.setText(_translate("MainWindow", "Load Video"))
         self.button_load_camera.setText(_translate("MainWindow", "Load Camera"))
-        self.button_detect.setText(_translate("MainWindow", "Detect"))
+        self.button_record.setText(_translate("MainWindow", "Record"))
         self.image_label_1.setText(_translate("MainWindow", "Image 1"))
         self.image_label_2.setText(_translate("MainWindow", "Image 2"))
-        self.button_stop.setText(_translate("MainWindow", "Stop"))
+        self.button_save.setText(_translate("MainWindow", "Save"))
         
 
 if __name__ == "__main__":
