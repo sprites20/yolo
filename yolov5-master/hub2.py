@@ -25,9 +25,56 @@ from PyQt5.QtCore import *
 import os
 import shutil
 
-import time
+loaded_model = None
+cam_running = None
 
-
+class Worker1(QThread):
+    global loaded_model
+    global cam_running
+    opt = ""
+    ImageUpdate1 = pyqtSignal(QImage)
+    ImageUpdate2 = pyqtSignal(QImage)
+    Terminator = pyqtSignal()
+    cam_running = True
+    cam_port = 0
+    cam = cv2.VideoCapture(cam_port)
+    while(cam_running):
+        # reading the input using the camera
+        result, image = cam.read()
+          
+        # If image will detected without any error, 
+        # show result
+        if result:
+            im0 = image
+            #im0 = cv2.cvtColor(im0, cv2.COLOR_BGR2RGB)
+            FlippedImage = image
+            image = QtGui.QImage(FlippedImage, FlippedImage.shape[1],FlippedImage.shape[0], FlippedImage.shape[1] * 3, QtGui.QImage.Format_RGB888)
+            pix = QtGui.QPixmap(image)
+            #ConvertToQtFormat = QImage(FlippedImage.data, FlippedImage.shape[1], FlippedImage.shape[0], QImage.Format_RGB888)
+            #Pic = ConvertToQtFormat.scaled(640, 640, Qt.KeepAspectRatio)
+            #cv2.imshow("test", FlippedImage)
+            cv2.imwrite("data/images/temp.jpg", FlippedImage)
+            #self.image_box_1.setPixmap()
+            #Pic = QtGui.QPixmap(pix)
+            self.ImageUpdate1.emit(pix)
+            
+            results = loaded_model('data/images/temp.jpg')#.save()
+            results.ims
+            results.render()
+            for im in results.ims:
+                #im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
+                #cv2.imshow("test", im)
+                FlippedImage = im
+                image = QtGui.QImage(FlippedImage, FlippedImage.shape[1],FlippedImage.shape[0], FlippedImage.shape[1] * 3, QtGui.QImage.Format_RGB888)
+                pix = QtGui.QPixmap(image)
+                #ConvertToQtFormat = QImage(FlippedImage.data, FlippedImage.shape[1], FlippedImage.shape[0], QImage.Format_RGB888)
+                #Pic = ConvertToQtFormat.scaled(640, 640, Qt.KeepAspectRatio)
+                #cv2.imshow("test", FlippedImage)
+                #self.image_box_2.setPixmap(QtGui.QPixmap(pix))
+                #Pic = QtGui.QPixmap(pix)
+                self.ImageUpdate2.emit(pix)
+    self.Terminator.emit()
+    
 class ScaledPixmapLabel(QtWidgets.QLabel):
     def paintEvent(self, event):
         if self.pixmap():
@@ -44,9 +91,7 @@ class ScaledPixmapLabel(QtWidgets.QLabel):
         super().paintEvent(event)
 
 class Ui_MainWindow(object):
-    loaded_model = None
     cam_running = None
-    vid_running = None
     opt = None
     
     num_stop = 1 
@@ -61,26 +106,13 @@ class Ui_MainWindow(object):
     img_over = None
 
     timer = QtCore.QTimer()
-    
+    timer.timeout.connect(show_video)
     #        Button_open_cam.clicked.connect(video_button)
     cap_video = 0
     flag = 0
     img = []
     
-    video_stream = None
-    
-    alreadystarted_cam = None
-    alreadystarted_vid = None
-    cam_port = 0
-    cam = cv2.VideoCapture(cam_port)
-    
-    curr_framecount = 0
-    curr_fps = 0
-    curr_maxframe = 0
-    
-    recording = None
-    saving = None
-    
+            
     def init_slots(self):
         self.button_load_model.clicked.connect(self.load_model)
 
@@ -90,7 +122,7 @@ class Ui_MainWindow(object):
         self.button_detect.clicked.connect(self.detect)
         self.button_stop.clicked.connect(self.stop)
         # self.ui.pushButton_9.clicked.connect(self.save_ss)
-        # self.timer_video.timeout.connect(self.show_video_cam_frame)
+        # self.timer_video.timeout.connect(self.show_video_frame)
 
         self.button_load_image.setDisabled(True)
         self.button_load_video.setDisabled(True)
@@ -101,12 +133,8 @@ class Ui_MainWindow(object):
         pass
     def open_img(self):
         # try except
-        self.cam_running = False
-        self.vid_running = False
-        dir = 'detections/images'
-        if not os.path.exists(dir):
-            #shutil.rmtree(dir)
-            os.makedirs(dir)
+        global cam_running
+        cam_running = False
         try:
             # self.img_name 选择图片路径
             self.img_name, _ = QtWidgets.QFileDialog.getOpenFileName(None, "Select Image", "data/images", "*.jpg ; *.png ; All Files(*)")
@@ -118,7 +146,6 @@ class Ui_MainWindow(object):
             FlippedImage = im0
             image = QtGui.QImage(FlippedImage, FlippedImage.shape[1],FlippedImage.shape[0], FlippedImage.shape[1] * 3, QtGui.QImage.Format_RGB888)
             pix = QtGui.QPixmap(image)
-            
             #ConvertToQtFormat = QImage(FlippedImage.data, FlippedImage.shape[1], FlippedImage.shape[0], QImage.Format_RGB888)
             #Pic = ConvertToQtFormat.scaled(640, 640, Qt.KeepAspectRatio)
             #cv2.imshow("test", FlippedImage)
@@ -131,151 +158,43 @@ class Ui_MainWindow(object):
                 #im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
                 #cv2.imshow("test", im)
                 FlippedImage = im
-                image = QtGui.QImage(FlippedImage, FlippedImage.shape[1],FlippedImage.shape[0], FlippedImage.shape[1] * 3, QtGui.QImage.Format_RGB888)
+                image = QtGui.QImage(FlippedImage, FlippedImage.shape[1], FlippedImage.shape[0], FlippedImage.shape[1] * 3, QtGui.QImage.Format_RGB888)
                 pix = QtGui.QPixmap(image)
                 #ConvertToQtFormat = QImage(FlippedImage.data, FlippedImage.shape[1], FlippedImage.shape[0], QImage.Format_RGB888)
                 #Pic = ConvertToQtFormat.scaled(640, 640, Qt.KeepAspectRatio)
                 #cv2.imshow("test", FlippedImage)
-                FlippedImage = cv2.cvtColor(FlippedImage, cv2.COLOR_BGR2RGB)
-                cv2.imwrite("detections/images/" + str(time.time()) + ".jpg", FlippedImage)
                 self.image_box_2.setPixmap(QtGui.QPixmap(pix))
         pass
     def open_vid(self):
-        self.cam_running = False
-        try:
-            # self.img_name 选择图片路径
-            self.vid_name, _ = QtWidgets.QFileDialog.getOpenFileName(None, "打开视频", "data/videos", "*.mp4;*.mkv;All Files(*)")
-        except OSError as reason:
-            print(str(reason))
-        else:
-            if not self.vid_name:
-                #QtWidgets.QMessageBox.warning(self, u"Warning", u"打开视频失败", buttons=QtWidgets.QMessageBox.Ok, defaultButton=QtWidgets.QMessageBox.Ok)
-                #self.ui.message_box.append("视频载入失败。")
-                pass
-            else:
-                cap = cv2.VideoCapture(self.vid_name)
-
-                if not cap.isOpened(): 
-                    print("could not open :",self.vid_name)
-                    return
-                    
-                length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                fps    = cap.get(cv2.CAP_PROP_FPS)
-                
-                print(length, width, height, fps)
-                
-                self.curr_fps = fps
-                self.curr_maxframe = length
-                self.curr_framecount = 0
-                
-                dir = 'detections/cache'
-                if os.path.exists(dir):
-                    shutil.rmtree(dir)
-                    os.makedirs(dir)
-                else:
-                    os.makedirs(dir)
-                
-                self.vid_running = True
-                self.video_stream = cv2.VideoCapture(self.vid_name)
-                self.timer.start(20)
-                #vid = QtGui.QPixmap(self.vid_name)#.scaled(self.image_box_1.width(), self.image_box_1.height())
-                #self.image_box_1.setPixmap(vid)
-                
+        pass
+        
+    def ImageUpdateSlot(self, Image):
+        self.image_box_1.setPixmap(QtGui.QPixmap(Image))
+        
+    def ImageUpdateSlot2(self, Image):
+        self.image_box_2.setPixmap(QtGui.QPixmap(Image))
+    
+    def TerminateWorker(self):
+        self.Worker1.stop()
+        
     def open_cam(self):
-        self.cam_running = True
-        self.vid_running = False
-        dir = 'detections/cache'
-        if os.path.exists(dir):
-            shutil.rmtree(dir)
-            os.makedirs(dir)
-        else:
-            os.makedirs(dir)
-        if not self.alreadystarted_cam:
-            self.alreadystarted_cam = True
-            self.cap_video = cv2.VideoCapture(0)
-            self.timer.start(20)
-            
-    def show_video(self):
-        result, image = None, None
-        if self.vid_running:
-            result, image = self.video_stream.read()
-        if result:
-            im0 = image
-            im0 = cv2.cvtColor(im0, cv2.COLOR_BGR2RGB)
-            FlippedImage = im0
-            image = QtGui.QImage(FlippedImage, FlippedImage.shape[1],FlippedImage.shape[0], FlippedImage.shape[1] * 3, QtGui.QImage.Format_RGB888)
-            pix = QtGui.QPixmap(image)
-            #ConvertToQtFormat = QImage(FlippedImage.data, FlippedImage.shape[1], FlippedImage.shape[0], QImage.Format_RGB888)
-            #Pic = ConvertToQtFormat.scaled(640, 640, Qt.KeepAspectRatio)
-            #cv2.imshow("test", FlippedImage)
-            #FlippedImage = cv2.cvtColor(FlippedImage, cv2.COLOR_BGR2RGB)
-            cv2.imwrite("data/images/temp_vid.jpg", FlippedImage)
-            self.image_box_1.setPixmap(QtGui.QPixmap(pix))
-            
-            results = self.loaded_model('data/images/temp_vid.jpg')#.save()
-            results.ims
-            results.render()
-            for im in results.ims:
-                im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
-                #cv2.imshow("test", im)
-                FlippedImage = im
-                image = QtGui.QImage(FlippedImage, FlippedImage.shape[1],FlippedImage.shape[0], FlippedImage.shape[1] * 3, QtGui.QImage.Format_RGB888)
-                pix = QtGui.QPixmap(image)
-                #ConvertToQtFormat = QImage(FlippedImage.data, FlippedImage.shape[1], FlippedImage.shape[0], QImage.Format_RGB888)
-                #Pic = ConvertToQtFormat.scaled(640, 640, Qt.KeepAspectRatio)
-                FlippedImage = cv2.cvtColor(FlippedImage, cv2.COLOR_BGR2RGB)
-                cv2.imwrite("detections/cache/" + str(time.time()) + ".jpg", FlippedImage)
-                self.image_box_2.setPixmap(QtGui.QPixmap(pix))
-            self.curr_framecount += 1
-            if self.curr_framecount == self.curr_maxframe:
-                self.vid_running = False
-                #Save Video
-    def show_video_cam(self):
-        # reading the input using the camera
-        result, image = None, None
-        if self.cam_running:
-            result, image = self.cap_video.read()
+        try:
+            self.Worker1 = Worker1()
 
-        # If image will detected without any error, 
-        # show result
-        if result:
-            im0 = image
-            im0 = cv2.cvtColor(im0, cv2.COLOR_BGR2RGB)
-            FlippedImage = im0
-            image = QtGui.QImage(FlippedImage, FlippedImage.shape[1],FlippedImage.shape[0], FlippedImage.shape[1] * 3, QtGui.QImage.Format_RGB888)
-            pix = QtGui.QPixmap(image)
-            #ConvertToQtFormat = QImage(FlippedImage.data, FlippedImage.shape[1], FlippedImage.shape[0], QImage.Format_RGB888)
-            #Pic = ConvertToQtFormat.scaled(640, 640, Qt.KeepAspectRatio)
-            #cv2.imshow("test", FlippedImage)
-            #FlippedImage = cv2.cvtColor(FlippedImage, cv2.COLOR_BGR2RGB)
-            cv2.imwrite("data/images/temp_cam.jpg", FlippedImage)
-            self.image_box_1.setPixmap(QtGui.QPixmap(pix))
+            self.Worker1.start()
             
-            results = self.loaded_model('data/images/temp_cam.jpg')#.save()
-            results.ims
-            results.render()
-            for im in results.ims:
-                im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
-                #cv2.imshow("test", im)
-                FlippedImage = im
-                image = QtGui.QImage(FlippedImage, FlippedImage.shape[1],FlippedImage.shape[0], FlippedImage.shape[1] * 3, QtGui.QImage.Format_RGB888)
-                pix = QtGui.QPixmap(image)
-                #ConvertToQtFormat = QImage(FlippedImage.data, FlippedImage.shape[1], FlippedImage.shape[0], QImage.Format_RGB888)
-                #Pic = ConvertToQtFormat.scaled(640, 640, Qt.KeepAspectRatio)
-                #cv2.imshow("test", FlippedImage)
-                FlippedImage = cv2.cvtColor(FlippedImage, cv2.COLOR_BGR2RGB)
-                cv2.imwrite("detections/cache/" + str(time.time()) + ".jpg", FlippedImage)
-                self.image_box_2.setPixmap(QtGui.QPixmap(pix))
-                
+            self.Worker1.ImageUpdate.connect(self.ImageUpdateSlot)
+            self.Worker1.ImageUpdate2.connect(self.ImageUpdateSlot2)
+            self.Worker1.Terminator.connect(self.TerminateWorker)
+        except:
+            pass
+        
+    def ImageUpdateSlot2(self, Image):
+        self.label_3.setPixmap(QPixmap.fromImage(Image))
     def detect(self):
         pass
-        
     def stop(self):
-        
         pass
-        
     def load_model(self):
         try:
             self.openfile_name_model, some = QtWidgets.QFileDialog.getOpenFileName(None, 'yolov5.pt', 'weights', "*.pt")
@@ -285,16 +204,18 @@ class Ui_MainWindow(object):
             if self.openfile_name_model:
                 print(self.openfile_name_model)
                 
-                try:
-                    self.loaded_model = torch.hub.load('ultralytics/yolov5', 'custom', path=self.openfile_name_model, force_reload=True)
-                except:
-                    self.loaded_model = torch.hub.load(r'D:\yolo\yolov5-master\weights', 'custom', path=self.openfile_name_model, force_reload=True)
+                dir = 'path_to_my_folder'
+                if os.path.exists(dir):
+                    shutil.rmtree(dir)
+                os.makedirs(dir)
+                
+                self.loaded_model = torch.hub.load('ultralytics/yolov5', 'custom', path=self.openfile_name_model, force_reload=True, hide_labels=True, hide_conf=True) 
                 # Images
                 #img = "C:\\Users\\NakaMura\\Desktop\\Screenshot 2022-11-27 223302.jpg"  # or file, Path, PIL, OpenCV, numpy, list
-                
+
                 # Inference
                 #results = model(img)
-                
+
                 # Results
                 #results.save()  # or .show(), .save(), .crop(), .pandas(), etc.
                 
@@ -307,11 +228,10 @@ class Ui_MainWindow(object):
                 #QtWidgets.QMessageBox.warning(self, u"Warning", u"无权重文件，请先选择权重文件，否则会发生未知错误。", buttons=QtWidgets.QMessageBox.Ok, defaultButton=QtWidgets.QMessageBox.Ok)
                 self.output_box.append("Warning!")
         # self.model_init(self,  **self.openfile_name_model )
-        
+    
     def initialize(self):
         self.init_slots()
-        self.timer.timeout.connect(self.show_video_cam)
-        self.timer.timeout.connect(self.show_video)
+    
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("MainWindow")
         MainWindow.resize(903, 431)
@@ -359,11 +279,11 @@ class Ui_MainWindow(object):
         self.button_stop.setGeometry(QtCore.QRect(10, 250, 131, 31))
         self.button_stop.setObjectName("button_stop")
         MainWindow.setCentralWidget(self.centralwidget)
-        
-        self.initialize()
-        
+                
         self.retranslateUi(MainWindow)
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
+        
+        self.initialize()
 
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
@@ -376,7 +296,7 @@ class Ui_MainWindow(object):
         self.image_label_1.setText(_translate("MainWindow", "Image 1"))
         self.image_label_2.setText(_translate("MainWindow", "Image 2"))
         self.button_stop.setText(_translate("MainWindow", "Stop"))
-        
+
 
 if __name__ == "__main__":
     import sys
