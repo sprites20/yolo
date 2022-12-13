@@ -82,6 +82,8 @@ class Ui_MainWindow(object):
     recording = None
     saving = None
     
+    thistime = None
+    
     selected = None
     
     def init_slots(self):
@@ -186,6 +188,12 @@ class Ui_MainWindow(object):
                 else:
                     os.makedirs(dir)
                 
+                self.thistime = str(time.time())
+                dir = 'detections/video_cache/' + self.thistime
+                if not os.path.exists(dir):
+                    #shutil.rmtree(dir)
+                    os.makedirs(dir)
+                
                 self.vid_running = True
                 self.video_stream = cv2.VideoCapture(self.vid_name)
                 self.timer.start(20)
@@ -197,13 +205,20 @@ class Ui_MainWindow(object):
         self.cam_running = True
         self.vid_running = False
         self.button_record.setDisabled(False)
-        self.button_save.setDisabled(True)
+        self.button_save.setDisabled(False)
         dir = 'detections/cache'
         if os.path.exists(dir):
             shutil.rmtree(dir)
             os.makedirs(dir)
         else:
             os.makedirs(dir)
+        
+        self.thistime = str(time.time())
+        dir = 'detections/cam_cache/' + self.thistime
+        if not os.path.exists(dir):
+            #shutil.rmtree(dir)
+            os.makedirs(dir)
+                    
         if not self.alreadystarted_cam:
             self.alreadystarted_cam = True
             self.cap_video = cv2.VideoCapture(0)
@@ -239,7 +254,9 @@ class Ui_MainWindow(object):
                 #Pic = ConvertToQtFormat.scaled(640, 640, Qt.KeepAspectRatio)
                 if self.recording:
                     FlippedImage = cv2.cvtColor(FlippedImage, cv2.COLOR_BGR2RGB)
+                    
                     cv2.imwrite("detections/cache/" + str(time.time()) + ".jpg", FlippedImage)
+                    cv2.imwrite('detections/video_cache/' + self.thistime + "/" + str(time.time()) + ".jpg", FlippedImage)
                 self.image_box_2.setPixmap(QtGui.QPixmap(pix))
             self.curr_framecount += 1
             if self.curr_framecount == self.curr_maxframe:
@@ -256,7 +273,7 @@ class Ui_MainWindow(object):
         if result:
             im0 = image
             im0 = cv2.cvtColor(im0, cv2.COLOR_BGR2RGB)
-            FlippedImage = im0
+            FlippedImage = cv2.flip(im0, 1)
             image = QtGui.QImage(FlippedImage, FlippedImage.shape[1],FlippedImage.shape[0], FlippedImage.shape[1] * 3, QtGui.QImage.Format_RGB888)
             pix = QtGui.QPixmap(image)
             #ConvertToQtFormat = QImage(FlippedImage.data, FlippedImage.shape[1], FlippedImage.shape[0], QImage.Format_RGB888)
@@ -280,7 +297,9 @@ class Ui_MainWindow(object):
                 #cv2.imshow("test", FlippedImage)
                 if self.recording:
                     FlippedImage = cv2.cvtColor(FlippedImage, cv2.COLOR_BGR2RGB)
+                    
                     cv2.imwrite("detections/cache/" + str(time.time()) + ".jpg", FlippedImage)
+                    cv2.imwrite('detections/cam_cache/' + self.thistime + "/" + + str(time.time()) + ".jpg", FlippedImage)
                 self.image_box_2.setPixmap(QtGui.QPixmap(pix))
                 
     def record(self):

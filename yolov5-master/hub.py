@@ -22,12 +22,22 @@ from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 
+import numpy as np
+from PIL import Image
+
 import os
 import shutil
 
 import time
 import glob
 
+import mediapipe as mp # Import mediapipe
+import csv
+
+from PIL import Image
+
+mp_drawing = mp.solutions.drawing_utils # Drawing helpers
+mp_holistic = mp.solutions.holistic # Mediapipe Solutions
 
 class ScaledPixmapLabel(QtWidgets.QLabel):
     def paintEvent(self, event):
@@ -82,7 +92,15 @@ class Ui_MainWindow(object):
     recording = None
     saving = None
     
+    thistime = None
+    
     selected = None
+    lastimage = None
+    subtraction = None
+    imageindex = 1
+    imageskips = 1
+    lastsubtraction = None
+    lastPSNR = 0
     
     def init_slots(self):
         self.button_load_model.clicked.connect(self.load_model)
@@ -186,6 +204,12 @@ class Ui_MainWindow(object):
                 else:
                     os.makedirs(dir)
                 
+                self.thistime = str(time.time())
+                dir = 'detections/video_cache/' + self.thistime
+                if not os.path.exists(dir):
+                    #shutil.rmtree(dir)
+                    os.makedirs(dir)
+                
                 self.vid_running = True
                 self.video_stream = cv2.VideoCapture(self.vid_name)
                 self.timer.start(20)
@@ -204,9 +228,16 @@ class Ui_MainWindow(object):
             os.makedirs(dir)
         else:
             os.makedirs(dir)
+        
+        self.thistime = str(time.time())
+        dir = 'detections/cam_cache/' + self.thistime
+        if not os.path.exists(dir):
+            #shutil.rmtree(dir)
+            os.makedirs(dir)
+                    
         if not self.alreadystarted_cam:
             self.alreadystarted_cam = True
-            self.cap_video = cv2.VideoCapture(0)
+            self.cap_video = cv2.VideoCapture(5)
             self.timer.start(20)
             
     def show_video(self):
@@ -222,7 +253,7 @@ class Ui_MainWindow(object):
             #ConvertToQtFormat = QImage(FlippedImage.data, FlippedImage.shape[1], FlippedImage.shape[0], QImage.Format_RGB888)
             #Pic = ConvertToQtFormat.scaled(640, 640, Qt.KeepAspectRatio)
             #cv2.imshow("test", FlippedImage)
-            #FlippedImage = cv2.cvtColor(FlippedImage, cv2.COLOR_BGR2RGB)
+            FlippedImage = cv2.cvtColor(FlippedImage, cv2.COLOR_BGR2RGB)
             cv2.imwrite("data/images/temp_vid.jpg", FlippedImage)
             self.image_box_1.setPixmap(QtGui.QPixmap(pix))
             
@@ -239,24 +270,46 @@ class Ui_MainWindow(object):
                 #Pic = ConvertToQtFormat.scaled(640, 640, Qt.KeepAspectRatio)
                 if self.recording:
                     FlippedImage = cv2.cvtColor(FlippedImage, cv2.COLOR_BGR2RGB)
+                    
                     cv2.imwrite("detections/cache/" + str(time.time()) + ".jpg", FlippedImage)
+                    cv2.imwrite('detections/video_cache/' + self.thistime + "/" + str(time.time()) + ".jpg", FlippedImage)
                 self.image_box_2.setPixmap(QtGui.QPixmap(pix))
             self.curr_framecount += 1
             if self.curr_framecount == self.curr_maxframe:
                 self.vid_running = False
                 #Save Video
+
     def show_video_cam(self):
         # reading the input using the camera
         result, image = None, None
-        if self.cam_running:
+        if self.imageindex == self.imageskips:
             result, image = self.cap_video.read()
-
+            self.imageindex = 0
+            try:
+                #print(PSNR(lastimage, image))
+                self.subtraction = cv2.subtract(image, self.lastimage)
+                #cv2.imshow("preview", self.subtraction)
+                #print("test", lastself.subtraction)
+                thisPSNR = PSNR(self.lastsubtraction, self.subtraction)
+                #print(thisPSNR)
+                #print(abs(lastPSNR - thisPSNR))
+                diff = abs(self.lastPSNR - self.thisPSNR)
+                self.lastPSNR = self.thisPSNR
+                if diff > 0.1:
+                    print("Movement Detected!", diff)
+                    #cv2.imshow("preview2", image)
+            except:
+                pass
+            self.lastimage = image
+            self.lastsubtraction = self.subtraction
+        
+        self.imageindex += 1
         # If image will detected without any error, 
         # show result
         if result:
             im0 = image
             im0 = cv2.cvtColor(im0, cv2.COLOR_BGR2RGB)
-            FlippedImage = im0
+            FlippedImage = cv2.flip(im0, 1)
             image = QtGui.QImage(FlippedImage, FlippedImage.shape[1],FlippedImage.shape[0], FlippedImage.shape[1] * 3, QtGui.QImage.Format_RGB888)
             pix = QtGui.QPixmap(image)
             #ConvertToQtFormat = QImage(FlippedImage.data, FlippedImage.shape[1], FlippedImage.shape[0], QImage.Format_RGB888)
@@ -268,20 +321,105 @@ class Ui_MainWindow(object):
             
             results = self.loaded_model('data/images/temp_cam.jpg')#.save()
             results.ims
-            results.render()
-            for im in results.ims:
-                im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
-                #cv2.imshow("test", im)
-                FlippedImage = im
-                image = QtGui.QImage(FlippedImage, FlippedImage.shape[1],FlippedImage.shape[0], FlippedImage.shape[1] * 3, QtGui.QImage.Format_RGB888)
-                pix = QtGui.QPixmap(image)
-                #ConvertToQtFormat = QImage(FlippedImage.data, FlippedImage.shape[1], FlippedImage.shape[0], QImage.Format_RGB888)
-                #Pic = ConvertToQtFormat.scaled(640, 640, Qt.KeepAspectRatio)
-                #cv2.imshow("test", FlippedImage)
-                if self.recording:
-                    FlippedImage = cv2.cvtColor(FlippedImage, cv2.COLOR_BGR2RGB)
-                    cv2.imwrite("detections/cache/" + str(time.time()) + ".jpg", FlippedImage)
-                self.image_box_2.setPixmap(QtGui.QPixmap(pix))
+            #results.render()
+            #results.save()
+            
+            with mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=0.5) as holistic: 
+                for im in results.ims:
+                    im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
+                    for i in results.xyxy[0]:
+                        #print(i[5].item())
+                        color = (0, 0, 255)
+                        if int(i[5].item()) == 0:
+                            cropped_image = im[int(i[1].item()):int(i[3].item()), int(i[0].item()):int(i[2].item())]
+                            cropped_image = Image.fromarray(cropped_image)
+                            cropped_image = np.array(cropped_image)
+                            class_name = "Walking"
+
+                            cropped_image.flags.writeable = False        
+                            
+                            # Make Detections
+                            results = holistic.process(cropped_image)
+                            # print(results.face_landmarks)
+                            
+                            # face_landmarks, pose_landmarks, left_hand_landmarks, right_hand_landmarks
+                            
+                            # Recolor image back to BGR for rendering
+                            cropped_image.flags.writeable = True   
+                            #cropped_image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+                            
+                            # 1. Draw face landmarks
+                            mp_drawing.draw_landmarks(cropped_image, results.face_landmarks, mp_holistic.FACEMESH_TESSELATION, 
+                                                     mp_drawing.DrawingSpec(color=(80,110,10), thickness=1, circle_radius=1),
+                                                     mp_drawing.DrawingSpec(color=(80,256,121), thickness=1, circle_radius=1)
+                                                     )
+                            
+                            # 2. Right hand
+                            mp_drawing.draw_landmarks(cropped_image, results.right_hand_landmarks, mp_holistic.HAND_CONNECTIONS, 
+                                                     mp_drawing.DrawingSpec(color=(80,22,10), thickness=2, circle_radius=4),
+                                                     mp_drawing.DrawingSpec(color=(80,44,121), thickness=2, circle_radius=2)
+                                                     )
+
+                            # 3. Left Hand
+                            mp_drawing.draw_landmarks(cropped_image, results.left_hand_landmarks, mp_holistic.HAND_CONNECTIONS, 
+                                                     mp_drawing.DrawingSpec(color=(121,22,76), thickness=2, circle_radius=4),
+                                                     mp_drawing.DrawingSpec(color=(121,44,250), thickness=2, circle_radius=2)
+                                                     )
+
+                            # 4. Pose Detections
+                            mp_drawing.draw_landmarks(cropped_image, results.pose_landmarks, mp_holistic.POSE_CONNECTIONS, 
+                                                     mp_drawing.DrawingSpec(color=(245,117,66), thickness=2, circle_radius=4),
+                                                     mp_drawing.DrawingSpec(color=(245,66,230), thickness=2, circle_radius=2)
+                                                     )
+                            """
+                            # Export coordinates
+                            try:
+                                # Extract Pose landmarks
+                                pose = results.pose_landmarks.landmark
+                                pose_row = list(np.array([[landmark.x, landmark.y, landmark.z, landmark.visibility] for landmark in pose]).flatten())
+                                
+                                # Extract Face landmarks
+                                face = results.face_landmarks.landmark
+                                face_row = list(np.array([[landmark.x, landmark.y, landmark.z, landmark.visibility] for landmark in face]).flatten())
+                                
+                                # Concate rows
+                                row = pose_row+face_row
+                                
+                                # Append class name 
+                                row.insert(0, class_name)
+                                
+                                
+                                # Export to CSV
+                                with open('coords.csv', mode='a', newline='') as f:
+                                    csv_writer = csv.writer(f, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+                                    csv_writer.writerow(row) 
+                                
+                            except:
+                                pass
+                            """
+                            cropped_PIL = Image.fromarray(cropped_image)
+                            im_PIL = Image.fromarray(im)
+                            im_PIL.paste(cropped_PIL, (int(i[0].item()), int(i[1].item())))
+                            im = np.array(im_PIL)
+
+                            im = cv2.rectangle(im, (int(i[0].item()), int(i[1].item())), (int(i[2].item()), int(i[3].item())), color, 2)
+                            
+                            #im = Image.fromarray(im)
+                            #im = np.array(im)
+                            #cv2_img = cv2.cvtColor(cv2_img, cv2.COLOR_RGB2BGR)
+                    #cv2.imshow("test", im)
+                    FlippedImage = im
+                    image = QtGui.QImage(FlippedImage, FlippedImage.shape[1], FlippedImage.shape[0], FlippedImage.shape[1] * 3, QtGui.QImage.Format_RGB888)
+                    pix = QtGui.QPixmap(image)
+                    #ConvertToQtFormat = QImage(FlippedImage.data, FlippedImage.shape[1], FlippedImage.shape[0], QImage.Format_RGB888)
+                    #Pic = ConvertToQtFormat.scaled(640, 640, Qt.KeepAspectRatio)
+                    #cv2.imshow("test", FlippedImage)
+                    if self.recording:
+                        FlippedImage = cv2.cvtColor(FlippedImage, cv2.COLOR_BGR2RGB)
+                        
+                        cv2.imwrite("detections/cache/" + str(time.time()) + ".jpg", FlippedImage)
+                        cv2.imwrite('detections/cam_cache/' + self.thistime + "/" + str(time.time()) + ".jpg", FlippedImage)
+                    self.image_box_2.setPixmap(QtGui.QPixmap(pix))
                 
     def record(self):
         _translate = QtCore.QCoreApplication.translate
